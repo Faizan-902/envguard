@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 class EnvGuardError(Exception):
     """Base exception for all envguard errors."""
     pass
