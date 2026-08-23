@@ -71,7 +71,7 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     if diff.missing_in_target:
         has_errors = True
-        print(red(f"? Missing Variables ({len(diff.missing_in_target)}):"))
+        print(red(f"[X] Missing Variables ({len(diff.missing_in_target)}):"))
         for k in diff.missing_in_target:
             line_no = tmpl.entries[k].line_number
             print(f"  {red('-')} {bold(k)} {dim(f'(defined in {example_path}:{line_no})')}")
@@ -79,7 +79,7 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     if diff.empty_in_target:
         has_errors = True
-        print(yellow(f"? Empty or Unresolved Placeholders ({len(diff.empty_in_target)}):"))
+        print(yellow(f"[!] Empty or Unresolved Placeholders ({len(diff.empty_in_target)}):"))
         for k in diff.empty_in_target:
             val = target.entries[k].value
             line_no = target.entries[k].line_number
@@ -90,22 +90,22 @@ def cmd_check(args: argparse.Namespace) -> int:
     if diff.extra_in_target:
         if args.strict:
             has_errors = True
-            print(red(f"? Undocumented Variables (--strict mode) ({len(diff.extra_in_target)}):"))
+            print(red(f"[X] Undocumented Variables (--strict mode) ({len(diff.extra_in_target)}):"))
         else:
-            print(dim(f"? Extra Variables (not in template) ({len(diff.extra_in_target)}):"))
+            print(dim(f"[i] Extra Variables (not in template) ({len(diff.extra_in_target)}):"))
         for k in diff.extra_in_target:
             line_no = target.entries[k].line_number
             print(f"  + {k} {dim(f'({env_path}:{line_no})')}")
         print()
 
     if diff.matching_keys:
-        print(green(f"? {len(diff.matching_keys)} variables valid and populated."))
+        print(green(f"[+] {len(diff.matching_keys)} variables valid and populated."))
 
     if has_errors:
-        print(red("\n? Environment check failed. Fix issues above before proceeding.\n"))
+        print(red("\n[X] Environment check failed. Fix issues above before proceeding.\n"))
         return 1
 
-    print(green("\n? Environment configuration is in sync and healthy!\n"))
+    print(green("\n[OK] Environment configuration is in sync and healthy!\n"))
     return 0
 
 
@@ -122,7 +122,7 @@ def cmd_diff(args: argparse.Namespace) -> int:
 
     diff = compare_env_files(tmpl, target)
 
-    print(f"\n{bold('Environment Diff')}: {example_path} ? {env_path}\n")
+    print(f"\n{bold('Environment Diff')}: {example_path} -> {env_path}\n")
     print(f"  {green('Matching:')} {len(diff.matching_keys)}")
     print(f"  {red('Missing in target:')} {len(diff.missing_in_target)}")
     print(f"  {yellow('Empty/Placeholder:')} {len(diff.empty_in_target)}")
@@ -150,10 +150,10 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
     updated, added = sync_env_files(template_path, target_path, fill_defaults=not args.empty)
     if not updated:
-        print(green(f"? '{target_path}' is already up to date with '{template_path}'."))
+        print(green(f"[OK] '{target_path}' is already up to date with '{template_path}'."))
         return 0
 
-    print(green(f"? Successfully added {len(added)} missing keys to '{target_path}':"))
+    print(green(f"[OK] Successfully added {len(added)} missing keys to '{target_path}':"))
     for k in added:
         print(f"  + {k}")
     return 0
@@ -172,7 +172,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 1
 
     generate_example_template(src_path, out_path, mask_secrets=not args.no_mask)
-    print(green(f"? Generated example template at '{out_path}' (secrets safely masked)."))
+    print(green(f"[OK] Generated example template at '{out_path}' (secrets safely masked)."))
     return 0
 
 

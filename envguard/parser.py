@@ -53,6 +53,7 @@ def _find_matching_quote(s: str, quote_char: str) -> int:
 
 
 def parse_env_content(content: str, path: str = "<string>") -> EnvFile:
+    content = content.lstrip("\ufeff")
     lines = content.splitlines()
     entries: dict[str, EnvEntry] = {}
 
@@ -129,5 +130,5 @@ def parse_env_file(file_path: str | Path) -> EnvFile:
     p = Path(file_path)
     if not p.exists():
         raise FileNotFoundError(f"Environment file '{p}' not found")
-    content = p.read_text(encoding="utf-8", errors="replace")
+    content = p.read_text(encoding="utf-8-sig", errors="replace")
     return parse_env_content(content, path=str(p))
