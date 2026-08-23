@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "envguard"
+version = "0.1.0"
+description = "A lightweight CLI and validator to prevent missing, drifted, or misconfigured environment variables."
+readme = "README.md"
+authors = [{ name = "Faizan", email = "amramoin2@gmail.com" }]
+license = { text = "MIT" }
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[project.scripts]
+envguard = "envguard.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Faizan-902/envguard"
+Repository = "https://github.com/Faizan-902/envguard.git"
