@@ -146,6 +146,36 @@ python -m unittest discover -s tests -v
 
 ---
 
+## Development
+
+Run the full test suite:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Measure coverage (must stay ≥85%):
+
+```bash
+pip install -r requirements-dev.txt
+coverage run -m unittest discover -s tests
+coverage report
+```
+
+Type-check:
+
+```bash
+mypy envguard
+```
+
+Publish a new release:
+
+```bash
+pip install -r requirements-dev.txt
+python -m build
+twine upload dist/*
+```
+
 ## License
 
 Distributed under the [MIT License](LICENSE). Copyright (c) 2026 Faizan.
