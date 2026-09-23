@@ -100,6 +100,37 @@ class TestEnvValidator(unittest.TestCase):
         self.assertFalse(res.is_valid)
         self.assertEqual(res.issues[0].issue_type, "placeholder")
 
+    def test_float_range_validation(self):
+        validator = EnvValidator([
+            Rule("RATIO", type="float", min_value=0.0, max_value=1.0),
+        ])
+        self.assertTrue(validator.validate(parse_env_content("RATIO=0.5")).is_valid)
+        self.assertFalse(validator.validate(parse_env_content("RATIO=2.5")).is_valid)
+
+    def test_regex_validation(self):
+        validator = EnvValidator([
+            Rule("CODE", type="string", regex=r"^[A-Z]{3}-\d{2}$"),
+        ])
+        self.assertTrue(validator.validate(parse_env_content("CODE=ABC-12")).is_valid)
+        self.assertFalse(validator.validate(parse_env_content("CODE=ab-12")).is_valid)
+
+    def test_custom_validator_error_string(self):
+        def always_bad(val):
+            return "custom check failed"
+        validator = EnvValidator([
+            Rule("X", custom_validator=always_bad),
+        ])
+        res = validator.validate(parse_env_content("X=anything"))
+        self.assertFalse(res.is_valid)
+        self.assertIn("custom check failed", res.issues[0].message)
+
+    def test_json_type_validation(self):
+        validator = EnvValidator([
+            Rule("CFG", type="json"),
+        ])
+        self.assertTrue(validator.validate(parse_env_content('CFG={"a": 1}')).is_valid)
+        self.assertFalse(validator.validate(parse_env_content("CFG=not-json")).is_valid)
+
 
 if __name__ == "__main__":
     unittest.main()

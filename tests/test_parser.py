@@ -53,6 +53,22 @@ class TestEnvParser(unittest.TestCase):
         with self.assertRaises(ParseError):
             parse_env_content(content)
 
+    def test_bom_prefix(self):
+        content = "\ufeffPORT=8080\nHOST=localhost"
+        env = parse_env_content(content)
+        self.assertEqual(env.get("PORT"), "8080")
+        self.assertEqual(env.get("HOST"), "localhost")
+
+    def test_escaped_quotes_in_double_quoted(self):
+        content = 'MSG="say \\"hi\\" now"'
+        env = parse_env_content(content)
+        self.assertEqual(env.get("MSG"), 'say "hi" now')
+
+    def test_equals_in_unquoted_value(self):
+        content = "PLAN=A=B=C"
+        env = parse_env_content(content)
+        self.assertEqual(env.get("PLAN"), "A=B=C")
+
 
 if __name__ == "__main__":
     unittest.main()

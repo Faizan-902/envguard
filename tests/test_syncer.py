@@ -43,6 +43,36 @@ class TestEnvSyncer(unittest.TestCase):
             self.assertIn("API_SECRET=<YOUR_API_SECRET_HERE>", template)
             self.assertNotIn("my_ultra_secret_key_12345", template)
 
+    def test_sync_creates_missing_target_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpl_file = Path(tmpdir) / ".env.example"
+            target_file = Path(tmpdir) / ".env"
+            tmpl_file.write_text("PORT=3000\n", encoding="utf-8")
+            updated, added = sync_env_files(tmpl_file, target_file)
+            self.assertTrue(updated)
+            self.assertEqual(added, ["PORT"])
+            self.assertIn("PORT=3000", target_file.read_text(encoding="utf-8"))
+
+    def test_generate_example_no_mask(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = Path(tmpdir) / ".env"
+            src.write_text("JWT_SECRET=super_secret\n", encoding="utf-8")
+            template = generate_example_template(src, mask_secrets=False)
+            self.assertIn("JWT_SECRET=super_secret", template)
+
+    def test_sync_preserves_existing_and_appends_newline(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpl_file = Path(tmpdir) / ".env.example"
+            target_file = Path(tmpdir) / ".env"
+            tmpl_file.write_text("A=1\nB=2\n", encoding="utf-8")
+            target_file.write_text("A=1", encoding="utf-8")
+            updated, added = sync_env_files(tmpl_file, target_file)
+            self.assertEqual(added, ["B"])
+            content = target_file.read_text(encoding="utf-8")
+            lines = content.splitlines()
+            self.assertEqual(lines[0], "A=1")
+            self.assertIn("B=2", content)
+
 
 if __name__ == "__main__":
     unittest.main()
