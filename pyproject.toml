@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "envguard-tools"
-version = "0.1.0"
+version = "0.1.1"
 description = "A lightweight CLI and validator to prevent missing, drifted, or misconfigured environment variables."
 readme = "README.md"
 authors = [{ name = "Faizan", email = "mfk.faizan.work@gmail.com" }]
