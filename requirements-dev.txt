@@ -1,0 +1,4 @@
+coverage>=7.0
+mypy>=1.8
+build>=1.0
+twine>=5.0

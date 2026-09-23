@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Iterator, Literal
 
 
 @dataclass
@@ -27,7 +27,7 @@ class EnvFile:
     def __contains__(self, key: str) -> bool:
         return key in self.entries
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[EnvEntry]:
         return iter(self.entries.values())
 
 

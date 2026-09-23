@@ -2,8 +2,9 @@ import argparse
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from envguard.cli import cmd_check, cmd_diff, cmd_init, cmd_sync
+from envguard.cli import cmd_check, cmd_diff, cmd_init, cmd_sync, main
 
 
 class TestEnvCLI(unittest.TestCase):
@@ -111,6 +112,34 @@ class TestEnvCLI(unittest.TestCase):
         args = argparse.Namespace(env=str(env), example=str(tmpl), empty=False, dry_run=True)
         self.assertEqual(cmd_sync(args), 0)
         self.assertEqual(env.read_text(encoding="utf-8"), before)
+
+    def test_main_version_flag(self):
+        with mock.patch("sys.argv", ["envguard", "--version"]), \
+             self.assertRaises(SystemExit) as cm:
+            main()
+        self.assertEqual(cm.exception.code, 0)
+
+    def test_main_no_command_defaults_to_check(self):
+        tmpl = self.base / ".env.example"
+        env = self.base / ".env"
+        tmpl.write_text("PORT=3000\n", encoding="utf-8")
+        env.write_text("PORT=3000\n", encoding="utf-8")
+        with mock.patch("sys.argv", ["envguard", "--no-color"]), \
+             mock.patch("envguard.cli.os.chdir", return_value=None), \
+             mock.patch("envguard.cli.cmd_check", return_value=7) as mc, \
+             self.assertRaises(SystemExit) as cm:
+            main()
+        mc.assert_called_once()
+        self.assertEqual(cm.exception.code, 7)
+
+    def test_main_unknown_command_prints_help(self):
+        with mock.patch("sys.argv", ["envguard", "bogus"]), \
+             mock.patch("envguard.cli.build_parser") as bp, \
+             self.assertRaises(SystemExit) as cm:
+            parser = bp.return_value
+            parser.parse_args.return_value = argparse.Namespace(command="bogus", no_color=False)
+            main()
+        self.assertEqual(cm.exception.code, 1)
 
 
 if __name__ == "__main__":

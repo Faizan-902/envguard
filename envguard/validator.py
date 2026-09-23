@@ -162,20 +162,20 @@ class EnvValidator:
 
         elif t == "integer" or t == "int":
             try:
-                num = int(val)
-                if rule.min_value is not None and num < rule.min_value:
+                int_val: int = int(val)
+                if rule.min_value is not None and int_val < rule.min_value:
                     return f"Must be at least {rule.min_value}"
-                if rule.max_value is not None and num > rule.max_value:
+                if rule.max_value is not None and int_val > rule.max_value:
                     return f"Must be at most {rule.max_value}"
             except ValueError:
                 return f"Expected integer, got '{val}'"
 
         elif t == "float" or t == "number":
             try:
-                num = float(val)
-                if rule.min_value is not None and num < rule.min_value:
+                float_val: float = float(val)
+                if rule.min_value is not None and float_val < rule.min_value:
                     return f"Must be at least {rule.min_value}"
-                if rule.max_value is not None and num > rule.max_value:
+                if rule.max_value is not None and float_val > rule.max_value:
                     return f"Must be at most {rule.max_value}"
             except ValueError:
                 return f"Expected numeric float, got '{val}'"
