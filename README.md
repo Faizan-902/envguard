@@ -38,7 +38,7 @@ Environment drift is one of the most frequent causes of broken local builds and 
 pip install -e .
 
 # Or install directly with pip
-pip install envguard
+pip install envguard-cli
 ```
 
 ---
@@ -130,7 +130,7 @@ Add EnvGuard to your GitHub Actions workflow to block PRs with missing environme
 ```yaml
 - name: Verify Environment Variables
   run: |
-    pip install envguard
+    pip install envguard-cli
     envguard check --strict
 ```
 
