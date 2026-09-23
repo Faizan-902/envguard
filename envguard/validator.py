@@ -22,13 +22,19 @@ _BOOL_TRUE = {"1", "true", "yes", "on", "t"}
 _BOOL_FALSE = {"0", "false", "no", "off", "f"}
 
 
+def _rule_allows_placeholder(rule: Rule, global_disallow: bool) -> bool:
+    if rule.allow_placeholder is not None:
+        return rule.allow_placeholder
+    return not global_disallow
+
+
 @dataclass
 class Rule:
     key: str
     type: str = "string"
     required: bool = True
     allow_empty: bool = False
-    allow_placeholder: bool = False
+    allow_placeholder: bool | None = None
     choices: Sequence[str] | None = None
     regex: str | None = None
     min_value: int | float | None = None
@@ -81,7 +87,7 @@ class EnvValidator:
                 ))
                 continue
 
-            if val and not rule.allow_placeholder and (self.disallow_placeholders or not rule.allow_placeholder):
+            if val and not _rule_allows_placeholder(rule, self.disallow_placeholders):
                 if is_placeholder(val):
                     issues.append(ValidationIssue(
                         key=key,

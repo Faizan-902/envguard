@@ -66,6 +66,40 @@ class TestEnvValidator(unittest.TestCase):
         self.assertFalse(res.is_valid)
         self.assertEqual(res.issues[0].issue_type, "missing")
 
+    def test_rule_allow_placeholder_overrides_global(self):
+        validator = EnvValidator([
+            Rule("API_KEY", allow_placeholder=True),
+        ])
+        env = parse_env_content("API_KEY=<YOUR_KEY_HERE>")
+        res = validator.validate(env)
+        self.assertTrue(res.is_valid)
+
+    def test_rule_placeholder_flagged_without_override(self):
+        validator = EnvValidator([
+            Rule("API_KEY", allow_placeholder=False),
+        ])
+        env = parse_env_content("API_KEY=<YOUR_KEY_HERE>")
+        res = validator.validate(env)
+        self.assertFalse(res.is_valid)
+        self.assertEqual(res.issues[0].issue_type, "placeholder")
+
+    def test_global_disallow_placeholders_false_disables_check(self):
+        validator = EnvValidator([
+            Rule("API_KEY", required=True),
+        ], disallow_placeholders=False)
+        env = parse_env_content("API_KEY=<YOUR_KEY_HERE>")
+        res = validator.validate(env)
+        self.assertTrue(res.is_valid)
+
+    def test_global_default_still_flags_placeholders(self):
+        validator = EnvValidator([
+            Rule("API_KEY", required=True),
+        ])
+        env = parse_env_content("API_KEY=<YOUR_KEY_HERE>")
+        res = validator.validate(env)
+        self.assertFalse(res.is_valid)
+        self.assertEqual(res.issues[0].issue_type, "placeholder")
+
 
 if __name__ == "__main__":
     unittest.main()
