@@ -13,8 +13,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Pinned Ubuntu images: `ubuntu-latest` moved to 26.04, which has no
+        # Python 3.9 build, so the 3.9 leg stays on 22.04.
+        os: [ubuntu-24.04, windows-latest, macos-latest]
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        exclude:
+          - os: ubuntu-24.04
+            python-version: "3.9"
+        include:
+          - os: ubuntu-22.04
+            python-version: "3.9"
 
     steps:
       - uses: actions/checkout@v4
