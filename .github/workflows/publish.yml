@@ -17,8 +17,33 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install build twine
-      - run: python -m build
+
+      - name: Install build tooling
+        run: pip install build twine
+
+      # A tag push does not run ci.yml (it only listens on branches), so the
+      # release is gated here: never publish an untested build to PyPI.
+      - name: Run test suite
+        run: python -m unittest discover -s tests -v
+
+      - name: Verify tag matches package version
+        run: |
+          python - <<'PY'
+          import os
+          import envguard
+
+          expected = f"v{envguard.__version__}"
+          actual = os.environ["GITHUB_REF_NAME"]
+          if actual != expected:
+              raise SystemExit(f"tag {actual} does not match package version {expected}")
+          PY
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Validate distributions
+        run: twine check dist/*
+
       - name: Upload to PyPI
         env:
           TWINE_USERNAME: __token__

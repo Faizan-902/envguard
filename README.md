@@ -9,6 +9,8 @@
 
 EnvGuard is a **zero-dependency** CLI and Python library that audits, validates, diffs, and safely synchronizes environment variables across development, staging, and CI/CD pipelines. It catches misconfigured environments **before** your service starts — not hours later in production.
 
+Release notes live in [CHANGELOG.md](CHANGELOG.md).
+
 ---
 
 ## Table of Contents
@@ -42,8 +44,8 @@ EnvGuard solves these problems **instantly**, with zero external dependencies, r
 ## Features
 
 - **Audit & Validate** — flags missing keys, empty values, and unresolved placeholders in `.env` against `.env.example`.
-- **Safe Synchronization** — appends missing keys into `.env` without ever overwriting existing local values.
-- **Secret-Safe Templates** — generates `.env.example` from `.env` while automatically masking secrets (`API_KEY`, `PASSWORD`, `JWT_SECRET`, and more).
+- **Safe Synchronization** — appends missing keys into `.env` without ever overwriting existing local values, writing atomically so an interrupted run cannot truncate the file.
+- **Secret-Safe Templates** — generates `.env.example` from `.env` while masking sensitive keys (`API_KEY`, `PASSWORD`, `JWT_SECRET`, and more) and any URL/DSN that embeds credentials (`postgres://user:pass@host/db`).
 - **Rich Schema Types** — validates ports, URLs, emails, booleans, integers, floats, JSON, enums, and custom regex.
 - **Strict Mode** — fails on undocumented extra variables to keep the environment surface deliberate.
 - **CI/CD Ready** — deterministic exit codes (`0`/`1`/`2`), color-free output in non-TTY environments, `NO_COLOR` support.
@@ -134,6 +136,20 @@ envguard init -e .env -o .env.example --force
 envguard init -e .env -o .env.example --no-mask
 ```
 
+Masking covers two cases: key names that look secret (`*_SECRET`, `*_TOKEN`, `*_PASSWORD`, `*_KEY`, `*_DSN`, `*_PWD`, `*_SESSION`, `*_CREDS`, `*_PAT`, `*_SK`, …) and values that carry credentials regardless of the key name, such as `DATABASE_URL=postgres://admin:s3cr3t@db.example.com/app` or `REDIS_URL=redis://:s3cr3t@cache:6379/0`. Both become `<YOUR_KEY_NAME_HERE>`. Credentials embedded in other formats — ODBC/ADO connection strings, query parameters such as `?api_key=…`, or a bare token in an innocuously named key — are not detected; review the generated template before committing. Comments are copied verbatim, so review those too.
+
+### Quoting and escaping
+
+EnvGuard follows `.env` conventions closely enough that values survive a round trip unmodified:
+
+- Values may be unquoted, single-quoted, or double-quoted. Quotes are stripped; multi-line quoted values are supported.
+- Inside double quotes only `\\`, `\"`, and `\'` are unescaped. Every other backslash is preserved literally, so Windows paths such as `PATH="C:\Users\dev\bin"`, `C:\temp`, and `C:\new` parse correctly. A value that *ends* with a backslash must be unquoted (`PATH=C:\dev\`), double the separator (`"C:\\dev\\"`), or single-quoted (`'C:\dev\'`), because a lone `\"` means an escaped quote.
+- Single-quoted values are literal: no escape processing, and `'C:\'` closes normally.
+- `#` starts an inline comment only at the start of a value or after whitespace: `PASSWORD=abc#123` keeps its full value, while `PORT=3000 # comment` records a comment.
+- `export KEY=value` is accepted, a UTF-8 BOM is ignored, and blank lines and comments are skipped.
+- Files that are not valid UTF-8 are rejected rather than rewritten. Writes are atomic, keep the existing permissions, preserve a UTF-8 BOM, and keep the file's line endings (a file with mixed endings is normalised to CRLF if it contains any).
+- A malformed line or an unclosed quote produces a syntax error and exit code `2` instead of a traceback.
+
 ---
 
 ## Python SDK
@@ -175,6 +191,8 @@ print("Environment configuration is valid.")
 | `-v, --version`   | Show the installed version.              |
 | `--no-color`      | Disable ANSI colored output.             |
 | `-h, --help`      | Show help for any command.               |
+
+Global options must come **before** the subcommand (`envguard --no-color check`). Setting `NO_COLOR` in the environment has the same effect, and color is disabled automatically when output is not a terminal.
 
 ### `envguard check`
 
@@ -239,8 +257,10 @@ EnvGuard returns deterministic status codes so your CI can act on the result:
 | Code | Meaning                                              |
 | ---- | ---------------------------------------------------- |
 | `0`  | Environment is healthy and in sync.                  |
-| `1`  | Missing, empty, or invalid variables were found.     |
-| `2`  | Syntax errors or missing files were encountered.     |
+| `1`  | Missing, empty, placeholder, or invalid variables were found — including a target `.env` that does not exist yet. |
+| `2`  | A required file is missing (for example the template), unreadable, or contains a syntax error. |
+
+`check` never prints a traceback: unusable input is reported as a one-line message with exit code `2`, which is safe to branch on in CI. Two command-specific cases: `init` returns `1` when the output file already exists and `--force` was not given, and `diff` returns `2` when either file is missing or unreadable.
 
 ---
 
@@ -260,6 +280,8 @@ Run the test suite:
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+CI runs the same suite on Python 3.9–3.14 across Linux, macOS, and Windows, plus coverage (≥85%), strict `mypy`, and a `python -m build` + `twine check` packaging gate.
 
 Measure coverage (gated at ≥85% in CI):
 
@@ -288,7 +310,7 @@ python -m build
 twine upload dist/*
 ```
 
-> Releasing via GitHub: pushing a `v*` tag (e.g. `v0.1.2`) automatically runs the test matrix, coverage, and type checks, then publishes to PyPI.
+> Releasing via GitHub: pushing a `v*` tag (e.g. `v0.2.0`) runs the test suite, checks that the tag matches `envguard.__version__`, builds the distributions, validates them with `twine check`, and publishes to PyPI. A tag that does not match `pyproject.toml` stops the workflow before anything is uploaded.
 
 ---
 
