@@ -8,48 +8,97 @@ from .models import EnvEntry, EnvFile
 _EXPORT_PREFIX_RE = re.compile(r"^\s*export\s+")
 _KEY_VAL_RE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$", re.DOTALL)
 
+#: Escape sequences decoded inside double-quoted values. Only structural escapes
+#: are decoded; every other backslash sequence is kept literally so Windows paths
+#: such as ``"C:\Users\dev"``, ``"C:\temp"``, and ``"C:\new"`` survive parsing.
+_DOUBLE_QUOTE_ESCAPES = {
+    "\\": "\\",
+    '"': '"',
+    "'": "'",
+}
+
+
+def _decode_double_quoted(text: str) -> str:
+    r"""Decode documented backslash escapes without re-encoding the text.
+
+    ``bytes.decode("unicode_escape")`` is unsafe here: it mangles non-ASCII
+    characters and raises ``UnicodeDecodeError`` on inputs like ``C:\Users``.
+    """
+    if "\\" not in text:
+        return text
+
+    out: list[str] = []
+    index = 0
+    length = len(text)
+    while index < length:
+        char = text[index]
+        if char != "\\" or index + 1 >= length:
+            out.append(char)
+            index += 1
+            continue
+        following = text[index + 1]
+        replacement = _DOUBLE_QUOTE_ESCAPES.get(following)
+        if replacement is None:
+            out.append(char)
+            out.append(following)
+        else:
+            out.append(replacement)
+        index += 2
+    return "".join(out)
+
+
+def _find_unescaped(text: str, quote_char: str, start: int = 0) -> int:
+    """Return the index of the first closing ``quote_char`` at or after ``start``.
+
+    Inside double quotes a backslash escapes only ``\\`` and ``\"`` — the same
+    pairs :func:`_decode_double_quoted` decodes — so ``"C:\\Users\\dev\\bin"``
+    closes correctly. Single-quoted values are literal, so nothing escapes there.
+    """
+    index = start
+    while index < len(text):
+        char = text[index]
+        if char == quote_char:
+            return index
+        if (
+            char == "\\"
+            and quote_char == '"'
+            and index + 1 < len(text)
+            and text[index + 1] in ('\\', '"')
+        ):
+            index += 2
+            continue
+        index += 1
+    return -1
+
+
+def _split_inline_comment(value: str) -> tuple[str, str | None]:
+    """Split an unquoted value from a trailing ``#`` comment.
+
+    A ``#`` only starts a comment at the start of the value or after whitespace,
+    matching ``python-dotenv``, so ``PASSWORD=abc#123`` keeps its full value.
+    """
+    for index, char in enumerate(value):
+        if char == "#" and (index == 0 or value[index - 1].isspace()):
+            return value[:index].rstrip(), value[index + 1 :].strip()
+    return value, None
+
 
 def _strip_quotes_and_comment(raw_val: str) -> tuple[str, str | None]:
     val = raw_val.strip()
     if not val:
         return "", None
 
-    if val.startswith('"'):
-        end_idx = _find_matching_quote(val, '"')
+    if val[0] in ("'", '"'):
+        quote_char = val[0]
+        end_idx = _find_unescaped(val, quote_char, 1)
         if end_idx != -1:
-            extracted = val[1:end_idx].encode().decode("unicode_escape")
-            remainder = val[end_idx + 1:].strip()
-            comment = remainder.lstrip('#').strip() if remainder.startswith('#') else None
+            inner = val[1:end_idx]
+            extracted = _decode_double_quoted(inner) if quote_char == '"' else inner
+            remainder = val[end_idx + 1 :].strip()
+            comment = remainder[1:].strip() if remainder.startswith("#") else None
             return extracted, comment
 
-    if val.startswith("'"):
-        end_idx = _find_matching_quote(val, "'")
-        if end_idx != -1:
-            extracted = val[1:end_idx]
-            remainder = val[end_idx + 1:].strip()
-            comment = remainder.lstrip('#').strip() if remainder.startswith('#') else None
-            return extracted, comment
-
-    if "#" in val:
-        parts = val.split("#", 1)
-        return parts[0].strip(), parts[1].strip()
-
-    return val, None
-
-
-def _find_matching_quote(s: str, quote_char: str) -> int:
-    escaped = False
-    for i in range(1, len(s)):
-        ch = s[i]
-        if escaped:
-            escaped = False
-            continue
-        if ch == '\\':
-            escaped = True
-            continue
-        if ch == quote_char:
-            return i
-    return -1
+    return _split_inline_comment(val)
 
 
 def parse_env_content(content: str, path: str = "<string>") -> EnvFile:
@@ -79,33 +128,44 @@ def parse_env_content(content: str, path: str = "<string>") -> EnvFile:
         raw_val = match.group(2)
         is_exported = bool(_EXPORT_PREFIX_RE.match(line))
 
-        if (raw_val.startswith('"') and _find_matching_quote(raw_val, '"') == -1) or \
-           (raw_val.startswith("'") and _find_matching_quote(raw_val, "'") == -1):
+        if raw_val[:1] in ("'", '"') and _find_unescaped(raw_val, raw_val[0], 1) == -1:
             quote_char = raw_val[0]
-            accumulated = [raw_val[1:]]
+            accumulated = raw_val[1:]
+            comment: str | None = None
             idx += 1
             closed = False
+            scan_from = 0
             while idx < len(lines):
-                cur_line = lines[idx]
-                if quote_char in cur_line:
-                    end_idx = cur_line.find(quote_char)
-                    accumulated.append(cur_line[:end_idx])
-                    val = "\n".join(accumulated)
-                    if quote_char == '"':
-                        val = val.encode().decode("unicode_escape")
+                accumulated = f"{accumulated}\n{lines[idx]}"
+                end_idx = _find_unescaped(accumulated, quote_char, scan_from)
+                if end_idx != -1:
+                    inner = accumulated[:end_idx]
+                    val = _decode_double_quoted(inner) if quote_char == '"' else inner
+                    remainder = accumulated[end_idx + 1 :].strip()
+                    if remainder.startswith("#"):
+                        comment = remainder[1:].strip()
+                    elif remainder:
+                        # A silently discarded remainder would merge two keys into
+                        # one when a quoted value is followed by another assignment.
+                        raise ParseError(
+                            f"Unexpected content after the closing quote for key '{key}' at line {line_no}",
+                            line_no,
+                            line,
+                        )
                     entries[key] = EnvEntry(
                         key=key,
                         value=val,
                         line_number=line_no,
                         raw_line=line,
-                        comment=None,
+                        comment=comment,
                         is_exported=is_exported,
                     )
                     closed = True
                     break
-                else:
-                    accumulated.append(cur_line)
-                    idx += 1
+                # Resume scanning at the end of what we already checked; step back
+                # one character when a trailing backslash may escape the next line.
+                scan_from = len(accumulated) - 1 if accumulated.endswith("\\") else len(accumulated)
+                idx += 1
 
             if not closed:
                 raise ParseError(f"Unclosed quote for key '{key}' starting at line {line_no}", line_no, line)
@@ -130,5 +190,8 @@ def parse_env_file(file_path: str | Path) -> EnvFile:
     p = Path(file_path)
     if not p.exists():
         raise FileNotFoundError(f"Environment file '{p}' not found")
-    content = p.read_text(encoding="utf-8-sig", errors="replace")
+    try:
+        content = p.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError as err:
+        raise ParseError(f"'{p}' is not valid UTF-8 ({err.reason} at byte {err.start})") from err
     return parse_env_content(content, path=str(p))
