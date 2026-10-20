@@ -1,4 +1,6 @@
 import argparse
+import contextlib
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -140,6 +142,69 @@ class TestEnvCLI(unittest.TestCase):
             parser.parse_args.return_value = argparse.Namespace(command="bogus", no_color=False)
             main()
         self.assertEqual(cm.exception.code, 1)
+
+    def _run_main(self, argv):
+        out = io.StringIO()
+        err = io.StringIO()
+        with mock.patch("sys.argv", ["envguard", *argv]), \
+             contextlib.redirect_stdout(out), \
+             contextlib.redirect_stderr(err), \
+             self.assertRaises(SystemExit) as cm:
+            main()
+        return cm.exception.code, out.getvalue() + err.getvalue()
+
+    def test_main_diff_syntax_error_is_reported_cleanly(self):
+        bad = self.base / "bad.env"
+        bad.write_text("BAD KEY=1\n", encoding="utf-8")
+        tmpl = self.base / ".env.example"
+        tmpl.write_text("A=1\n", encoding="utf-8")
+
+        code, output = self._run_main(["diff", "-e", str(bad), "-x", str(tmpl)])
+        self.assertEqual(code, 2)
+        self.assertIn("Syntax error", output)
+        self.assertNotIn("Traceback", output)
+
+    def test_main_sync_syntax_error_is_reported_cleanly(self):
+        bad = self.base / "bad.env"
+        bad.write_text("BAD KEY=1\n", encoding="utf-8")
+        tmpl = self.base / ".env.example"
+        tmpl.write_text("A=1\n", encoding="utf-8")
+
+        code, output = self._run_main(["sync", "-e", str(bad), "-x", str(tmpl), "--dry-run"])
+        self.assertEqual(code, 2)
+        self.assertIn("Syntax error", output)
+        self.assertNotIn("Traceback", output)
+
+    def test_main_init_syntax_error_is_reported_cleanly(self):
+        bad = self.base / "bad.env"
+        bad.write_text("BAD KEY=1\n", encoding="utf-8")
+
+        code, output = self._run_main(["init", "-e", str(bad), "-o", str(self.base / "out.example")])
+        self.assertEqual(code, 2)
+        self.assertIn("Syntax error", output)
+        self.assertNotIn("Traceback", output)
+
+    def test_main_check_on_directory_is_reported_cleanly(self):
+        directory = self.base / "not-a-file"
+        directory.mkdir()
+
+        code, output = self._run_main(["check", "-e", str(directory), "-x", str(directory)])
+        self.assertEqual(code, 2)
+        self.assertIn("Error", output)
+        self.assertNotIn("Traceback", output)
+
+    def test_main_sync_refuses_non_utf8_file(self):
+        bad = self.base / "latin1.env"
+        original = b"A=1\nNAME=caf\xe9\n"
+        bad.write_bytes(original)
+        tmpl = self.base / ".env.example"
+        tmpl.write_text("A=1\nB=2\n", encoding="utf-8")
+
+        code, output = self._run_main(["sync", "-e", str(bad), "-x", str(tmpl)])
+        self.assertEqual(code, 2)
+        self.assertIn("not valid UTF-8", output)
+        self.assertNotIn("Traceback", output)
+        self.assertEqual(bad.read_bytes(), original)
 
 
 if __name__ == "__main__":

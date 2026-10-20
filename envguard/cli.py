@@ -9,7 +9,6 @@ from . import __version__
 from .exceptions import EnvGuardError, ParseError
 from .parser import parse_env_file
 from .syncer import compare_env_files, generate_example_template, sync_env_files
-from .validator import EnvValidator, is_placeholder
 
 # Terminal ANSI color helpers
 USE_COLOR = sys.stdout.isatty() and "NO_COLOR" not in os.environ
@@ -17,6 +16,13 @@ USE_COLOR = sys.stdout.isatty() and "NO_COLOR" not in os.environ
 
 def _color(text: str, code: str) -> str:
     return f"\033[{code}m{text}\033[0m" if USE_COLOR else text
+
+
+def _report_error(err: BaseException) -> int:
+    """Print a human-readable error for a failed command and return exit code 2."""
+    label = "Syntax error" if isinstance(err, ParseError) else "Error"
+    print(red(f"{label}: {err}"))
+    return 2
 
 
 def green(text: str) -> str:
@@ -59,9 +65,8 @@ def cmd_check(args: argparse.Namespace) -> int:
     try:
         tmpl = parse_env_file(example_path)
         target = parse_env_file(env_path)
-    except ParseError as err:
-        print(red(f"Syntax error: {err} (Line {err.line_number})"))
-        return 2
+    except (EnvGuardError, OSError) as err:
+        return _report_error(err)
 
     diff = compare_env_files(tmpl, target)
     has_errors = False
@@ -116,9 +121,8 @@ def cmd_diff(args: argparse.Namespace) -> int:
     try:
         tmpl = parse_env_file(example_path)
         target = parse_env_file(env_path)
-    except FileNotFoundError as err:
-        print(red(f"Error: {err}"))
-        return 2
+    except (EnvGuardError, OSError) as err:
+        return _report_error(err)
 
     diff = compare_env_files(tmpl, target)
 
@@ -140,15 +144,21 @@ def cmd_sync(args: argparse.Namespace) -> int:
         return 2
 
     if args.dry_run:
-        tmpl = parse_env_file(template_path)
-        target = parse_env_file(target_path) if target_path.exists() else None
+        try:
+            tmpl = parse_env_file(template_path)
+            target = parse_env_file(target_path) if target_path.exists() else None
+        except (EnvGuardError, OSError) as err:
+            return _report_error(err)
         missing = [k for k in tmpl.entries if not target or k not in target.entries]
         print(f"Dry run: {len(missing)} keys would be added to {target_path}:")
         for k in missing:
             print(f"  + {k}")
         return 0
 
-    updated, added = sync_env_files(template_path, target_path, fill_defaults=not args.empty)
+    try:
+        updated, added = sync_env_files(template_path, target_path, fill_defaults=not args.empty)
+    except (EnvGuardError, OSError) as err:
+        return _report_error(err)
     if not updated:
         print(green(f"[OK] '{target_path}' is already up to date with '{template_path}'."))
         return 0
@@ -171,7 +181,10 @@ def cmd_init(args: argparse.Namespace) -> int:
         print(yellow(f"Warning: '{out_path}' already exists. Use --force to overwrite."))
         return 1
 
-    generate_example_template(src_path, out_path, mask_secrets=not args.no_mask)
+    try:
+        generate_example_template(src_path, out_path, mask_secrets=not args.no_mask)
+    except (EnvGuardError, OSError) as err:
+        return _report_error(err)
     print(green(f"[OK] Generated example template at '{out_path}' (secrets safely masked)."))
     return 0
 
@@ -237,11 +250,15 @@ def main() -> None:
     }
 
     handler = handler_map.get(args.command)
-    if handler:
-        sys.exit(handler(args))
-    else:
+    if not handler:
         parser.print_help()
         sys.exit(1)
+
+    try:
+        exit_code = handler(args)
+    except (EnvGuardError, OSError) as err:
+        exit_code = _report_error(err)
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
